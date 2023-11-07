@@ -1,0 +1,836 @@
+From 1c42581d0167a18beec7391ba542f52b9a570b89 Mon Sep 17 00:00:00 2001
+From: Cis van Mierlo <cis.van.mierlo@nxp.com>
+Date: Mon, 6 Mar 2023 08:37:20 +0100
+Subject: [PATCH] apps patch BMS5.17
+
+---
+ canutils/libcanardv0/Kconfig                  |  27 -----
+ canutils/libcanardv0/Makefile                 |  71 ------------
+ .../{libcanardv0 => libdronecan}/.gitignore   |   0
+ canutils/libdronecan/Kconfig                  |  37 ++++++
+ .../{libcanardv0 => libdronecan}/Make.defs    |   6 +-
+ canutils/libdronecan/Makefile                 |  95 +++++++++++++++
+ examples/{canardv0 => dronecan}/Kconfig       |  25 ++--
+ examples/{canardv0 => dronecan}/Make.defs     |   6 +-
+ examples/{canardv0 => dronecan}/Makefile      |   8 +-
+ examples/{canardv0 => dronecan}/canard_main.c | 109 ++++++++++++++++--
+ include/canutils/.gitignore                   |   2 +
+ nxp_bms/Make.defs                             |  35 ++++++
+ nxp_bms/Makefile                              |  75 ++++++++++++
+ 13 files changed, 364 insertions(+), 132 deletions(-)
+ delete mode 100644 canutils/libcanardv0/Kconfig
+ delete mode 100644 canutils/libcanardv0/Makefile
+ rename canutils/{libcanardv0 => libdronecan}/.gitignore (100%)
+ create mode 100644 canutils/libdronecan/Kconfig
+ rename canutils/{libcanardv0 => libdronecan}/Make.defs (88%)
+ create mode 100644 canutils/libdronecan/Makefile
+ rename examples/{canardv0 => dronecan}/Kconfig (55%)
+ rename examples/{canardv0 => dronecan}/Make.defs (88%)
+ rename examples/{canardv0 => dronecan}/Makefile (88%)
+ rename examples/{canardv0 => dronecan}/canard_main.c (84%)
+ create mode 100644 nxp_bms/Make.defs
+ create mode 100644 nxp_bms/Makefile
+
+diff --git a/canutils/libcanardv0/Kconfig b/canutils/libcanardv0/Kconfig
+deleted file mode 100644
+index db32d813b..000000000
+--- a/canutils/libcanardv0/Kconfig
++++ /dev/null
+@@ -1,27 +0,0 @@
+-#
+-# For a description of the syntax of this configuration file,
+-# see the file kconfig-language.txt in the NuttX tools repository.
+-#
+-
+-config CANUTILS_LIBCANARDV0
+-	bool "libcanard UAVCAN v0 Library"
+-	default n
+-	depends on CAN && CAN_EXTID
+-	---help---
+-		Enable the libcanard UAVCAN v0 library.
+-
+-if CANUTILS_LIBCANARDV0
+-
+-config LIBCANARDV0_URL
+-	string "libcanard URL"
+-	default "https://github.com/UAVCAN/libcanard/archive"
+-	---help---
+-		libcanard URL.
+-
+-config LIBCANARDV0_VERSION
+-	string "libcanard Version"
+-	default "5ad65c6a4efda60cda7a8f0512da0f465822bbb8"
+-	---help---
+-		libcanard version.
+-
+-endif
+diff --git a/canutils/libcanardv0/Makefile b/canutils/libcanardv0/Makefile
+deleted file mode 100644
+index a337fd3a7..000000000
+--- a/canutils/libcanardv0/Makefile
++++ /dev/null
+@@ -1,71 +0,0 @@
+-############################################################################
+-# apps/canutils/libcanardv0/Makefile
+-#
+-# Licensed to the Apache Software Foundation (ASF) under one or more
+-# contributor license agreements.  See the NOTICE file distributed with
+-# this work for additional information regarding copyright ownership.  The
+-# ASF licenses this file to you under the Apache License, Version 2.0 (the
+-# "License"); you may not use this file except in compliance with the
+-# License.  You may obtain a copy of the License at
+-#
+-#   http://www.apache.org/licenses/LICENSE-2.0
+-#
+-# Unless required by applicable law or agreed to in writing, software
+-# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+-# License for the specific language governing permissions and limitations
+-# under the License.
+-#
+-############################################################################
+-
+-include $(APPDIR)/Make.defs
+-
+-UNPACK = unzip
+-PACKEXT = .zip
+-
+-LIBCANARDV0_URL = $(patsubst "%",%,$(strip $(CONFIG_LIBCANARDV0_URL)))
+-LIBCANARDV0_VERSION = $(patsubst "%",%,$(strip $(CONFIG_LIBCANARDV0_VERSION)))
+-LIBCANARDV0_UNPACKNAME = libcanard-$(LIBCANARDV0_VERSION)
+-LIBCANARDV0_PACKNAME = $(LIBCANARDV0_UNPACKNAME)$(PACKEXT)
+-LIBCANARDV0_SRCDIR = $(LIBCANARDV0_UNPACKNAME)
+-LIBCANARDV0_DRVDIR = $(LIBCANARDV0_SRCDIR)$(DELIM)drivers$(DELIM)nuttx
+-
+-APPS_INCDIR = $(APPDIR)$(DELIM)include$(DELIM)canutils
+-
+-CFLAGS += -std=c99 -DCANARD_ASSERT=DEBUGASSERT
+-CFLAGS += ${shell $(INCDIR) "$(CC)" $(APPS_INCDIR)}
+-
+-CSRCS = $(LIBCANARDV0_SRCDIR)$(DELIM)canard.c $(LIBCANARDV0_DRVDIR)$(DELIM)canard_nuttx.c
+-
+-$(LIBCANARDV0_PACKNAME):
+-	@echo "Downloading: $@"
+-	$(Q) curl -o $@ -L $(LIBCANARDV0_URL)$(DELIM)$(LIBCANARDV0_VERSION)$(PACKEXT)
+-
+-$(LIBCANARDV0_UNPACKNAME): $(LIBCANARDV0_PACKNAME)
+-	@echo "Unpacking: $< -> $@"
+-	$(call DELDIR, $@)
+-	$(Q) $(UNPACK) $<
+-	$(Q) touch $@
+-
+-$(LIBCANARDV0_SRCDIR)$(DELIM)canard.h: $(LIBCANARDV0_UNPACKNAME)
+-
+-$(LIBCANARDV0_DRVDIR)$(DELIM)canard_nuttx.h: $(LIBCANARDV0_UNPACKNAME)
+-
+-$(APPS_INCDIR)$(DELIM)canard.h: $(LIBCANARDV0_SRCDIR)$(DELIM)canard.h
+-	$(Q) cp $< $@
+-
+-$(APPS_INCDIR)$(DELIM)canard_nuttx.h: $(LIBCANARDV0_DRVDIR)$(DELIM)canard_nuttx.h
+-	$(Q) cp $< $@
+-
+-context:: $(APPS_INCDIR)$(DELIM)canard.h $(APPS_INCDIR)$(DELIM)canard_nuttx.h
+-
+-clean::
+-	$(foreach OBJ, $(OBJS), $(call DELFILE, $(OBJ)))
+-
+-distclean::
+-	$(call DELFILE, $(APPS_INCDIR)$(DELIM)canard.h)
+-	$(call DELFILE, $(APPS_INCDIR)$(DELIM)canard_nuttx.h)
+-	$(call DELDIR, $(LIBCANARDV0_UNPACKNAME))
+-	$(call DELFILE, $(LIBCANARDV0_PACKNAME))
+-
+-include $(APPDIR)/Application.mk
+diff --git a/canutils/libcanardv0/.gitignore b/canutils/libdronecan/.gitignore
+similarity index 100%
+rename from canutils/libcanardv0/.gitignore
+rename to canutils/libdronecan/.gitignore
+diff --git a/canutils/libdronecan/Kconfig b/canutils/libdronecan/Kconfig
+new file mode 100644
+index 000000000..9ff008cc3
+--- /dev/null
++++ b/canutils/libdronecan/Kconfig
+@@ -0,0 +1,37 @@
++#
++# For a description of the syntax of this configuration file,
++# see the file kconfig-language.txt in the NuttX tools repository.
++#
++
++config CANUTILS_LIBDRONECAN
++	bool "libcanard DroneCAN Library"
++	default n
++	depends on (CAN && CAN_EXTID) || NET_CAN
++	---help---
++		Enable the libcanard DroneCAN library.
++
++if CANUTILS_LIBDRONECAN
++
++config LIBDRONECAN_URL
++	string "libcanard URL"
++	default "https://github.com/dronecan/libcanard/archive"
++	---help---
++		libcanard URL.
++
++config LIBDRONECAN_VERSION
++	string "libcanard Version"
++	default "aec8028798e8485851644e85093c50b1bd6e8ade"
++	---help---
++		libcanard version.
++		
++config LIBDRONECAN_CANFD
++	bool "(Experimental) libcanard CAN FD Support"
++	default n
++	depends on NET_CAN_CANFD
++	---help---
++		libcanard CAN FD support.
++		Adds support for CAN FD, this is still experimental
++		since libcanard doesn't support runtime switching
++		between CAN2.0B and CAN FD that well
++
++endif
+diff --git a/canutils/libcanardv0/Make.defs b/canutils/libdronecan/Make.defs
+similarity index 88%
+rename from canutils/libcanardv0/Make.defs
+rename to canutils/libdronecan/Make.defs
+index 4dc7280ce..9598868c7 100644
+--- a/canutils/libcanardv0/Make.defs
++++ b/canutils/libdronecan/Make.defs
+@@ -1,5 +1,5 @@
+ ############################################################################
+-# apps/canutils/libcanardv0/Make.defs
++# apps/canutils/libdronecan/Make.defs
+ #
+ # Licensed to the Apache Software Foundation (ASF) under one or more
+ # contributor license agreements.  See the NOTICE file distributed with
+@@ -18,6 +18,6 @@
+ #
+ ############################################################################
+ 
+-ifeq ($(CONFIG_CANUTILS_LIBCANARDV0),y)
+-CONFIGURED_APPS += $(APPDIR)/canutils/libcanardv0
++ifneq ($(CONFIG_CANUTILS_LIBDRONECAN),)
++CONFIGURED_APPS += $(APPDIR)/canutils/libdronecan
+ endif
+diff --git a/canutils/libdronecan/Makefile b/canutils/libdronecan/Makefile
+new file mode 100644
+index 000000000..790d1f041
+--- /dev/null
++++ b/canutils/libdronecan/Makefile
+@@ -0,0 +1,95 @@
++############################################################################
++# apps/canutils/libcanardv0/Makefile
++#
++# Licensed to the Apache Software Foundation (ASF) under one or more
++# contributor license agreements.  See the NOTICE file distributed with
++# this work for additional information regarding copyright ownership.  The
++# ASF licenses this file to you under the Apache License, Version 2.0 (the
++# "License"); you may not use this file except in compliance with the
++# License.  You may obtain a copy of the License at
++#
++#   http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
++# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
++# License for the specific language governing permissions and limitations
++# under the License.
++#
++############################################################################
++
++include $(APPDIR)/Make.defs
++
++UNPACK = unzip
++PACKEXT = .zip
++
++LIBDRONECAN_URL = $(patsubst "%",%,$(strip $(CONFIG_LIBDRONECAN_URL)))
++LIBDRONECAN_VERSION = $(patsubst "%",%,$(strip $(CONFIG_LIBDRONECAN_VERSION)))
++LIBDRONECAN_UNPACKNAME = libcanard-$(LIBDRONECAN_VERSION)
++LIBDRONECAN_PACKNAME = $(LIBDRONECAN_UNPACKNAME)$(PACKEXT)
++LIBDRONECAN_SRCDIR = $(LIBDRONECAN_UNPACKNAME)
++LIBDRONECAN_DRVDIR = $(LIBDRONECAN_SRCDIR)$(DELIM)drivers$(DELIM)nuttx
++LIBDRONECAN_SOCKETCANDIR = $(LIBDRONECAN_SRCDIR)$(DELIM)drivers$(DELIM)socketcan
++
++APPS_INCDIR = $(APPDIR)$(DELIM)include$(DELIM)canutils
++
++# Conflict with Cyphal's libcanard
++ifeq ($(CONFIG_CANUTILS_LIBCANARDV1),y)
++APPS_INCDIR = $(APPDIR)$(DELIM)include$(DELIM)canutils$(DELIM)dronecan
++CFLAGS += -DcanardInit=dronecanardInit -I$(APPS_INCDIR)
++endif
++
++CFLAGS += -std=c99 -DCANARD_ASSERT=DEBUGASSERT
++CFLAGS += ${shell $(INCDIR) "$(CC)" $(APPS_INCDIR)}
++
++ifeq ($(CONFIG_LIBDRONECAN_CANFD),y)
++CFLAGS += -DCANARD_ENABLE_CANFD=1
++endif
++
++CSRCS = $(LIBDRONECAN_SRCDIR)$(DELIM)canard.c
++
++ifeq ($(CONFIG_NET_CAN),y)
++CSRCS += $(LIBDRONECAN_SOCKETCANDIR)$(DELIM)socketcan.c
++else
++CSRCS += $(LIBDRONECAN_DRVDIR)$(DELIM)canard_nuttx.c
++endif
++
++$(LIBDRONECAN_PACKNAME):
++	@echo "Downloading: $@"
++	$(Q) curl -o $@ -L $(LIBDRONECAN_URL)$(DELIM)$(LIBDRONECAN_VERSION)$(PACKEXT)
++
++$(LIBDRONECAN_UNPACKNAME): $(LIBDRONECAN_PACKNAME)
++	@echo "Unpacking: $< -> $@"
++	$(call DELDIR, $@)
++	$(Q) $(UNPACK) $<
++	$(Q) touch $@
++
++$(LIBDRONECAN_SRCDIR)$(DELIM)canard.h: $(LIBDRONECAN_UNPACKNAME)
++
++$(LIBDRONECAN_DRVDIR)$(DELIM)canard_nuttx.h: $(LIBDRONECAN_UNPACKNAME)
++
++$(LIBDRONECAN_SOCKETCANDIR)$(DELIM)socketcan.h: $(LIBDRONECAN_UNPACKNAME)
++
++$(APPS_INCDIR)$(DELIM)canard.h: $(LIBDRONECAN_SRCDIR)$(DELIM)canard.h
++	$(Q) mkdir -p $(APPS_INCDIR)
++	$(Q) cp $< $@
++
++$(APPS_INCDIR)$(DELIM)canard_nuttx.h: $(LIBDRONECAN_DRVDIR)$(DELIM)canard_nuttx.h
++	$(Q) cp $< $@
++
++$(APPS_INCDIR)$(DELIM)socketcan.h: $(LIBDRONECAN_SOCKETCANDIR)$(DELIM)socketcan.h
++	$(Q) cp $< $@
++
++context:: $(APPS_INCDIR)$(DELIM)canard.h $(APPS_INCDIR)$(DELIM)canard_nuttx.h $(APPS_INCDIR)$(DELIM)socketcan.h
++
++clean::
++	$(foreach OBJ, $(OBJS), $(call DELFILE, $(OBJ)))
++
++distclean::
++	$(call DELFILE, $(APPS_INCDIR)$(DELIM)canard.h)
++	$(call DELFILE, $(APPS_INCDIR)$(DELIM)canard_nuttx.h)
++	$(call DELFILE, $(APPS_INCDIR)$(DELIM)socketcan.h)
++	$(call DELDIR, $(LIBDRONECAN_UNPACKNAME))
++	$(call DELFILE, $(LIBDRONECAN_PACKNAME))
++
++include $(APPDIR)/Application.mk
+diff --git a/examples/canardv0/Kconfig b/examples/dronecan/Kconfig
+similarity index 55%
+rename from examples/canardv0/Kconfig
+rename to examples/dronecan/Kconfig
+index 3aea891e1..f005a37f2 100644
+--- a/examples/canardv0/Kconfig
++++ b/examples/dronecan/Kconfig
+@@ -3,45 +3,46 @@
+ # see the file kconfig-language.txt in the NuttX tools repository.
+ #
+ 
+-config EXAMPLES_LIBCANARDV0
+-	tristate "libcandard v0 example"
++config EXAMPLES_DRONECAN
++	tristate "DroneCAN example"
+ 	default n
+-	depends on CANUTILS_LIBCANARDV0 && SYSTEM_TIME64
++	depends on CANUTILS_LIBDRONECAN && SYSTEM_TIME64
+ 	---help---
+-		Enable the LIBCANARDV0 example
++		Enable the LIBDRONECAN example
+ 
+-if EXAMPLES_LIBCANARDV0
++if EXAMPLES_DRONECAN
+ 
+-config EXAMPLES_LIBCANARDV0_DEVPATH
++config EXAMPLES_DRONECAN_DEVPATH
+ 	string "Device Path"
+ 	default "/dev/can0"
++	depends on CAN
+ 	---help---
+ 		The device path
+ 
+-config EXAMPLES_LIBCANARDV0_NODE_ID
++config EXAMPLES_DRONECAN_NODE_ID
+ 	int "Node ID"
+ 	default 1
+ 	range 1 127
+ 	---help---
+ 		Specifies the node's ID
+ 
+-config EXAMPLES_LIBCANARDV0_APP_NODE_NAME
++config EXAMPLES_DRONECAN_APP_NODE_NAME
+ 	string "Node name"
+-	default "org.uavcan.libcanard.nuttx.demo"
++	default "org.dronecan.nuttx.demo"
+ 	---help---
+ 		app node name
+ 
+-config EXAMPLES_LIBCANARDV0_NODE_MEM_POOL_SIZE
++config EXAMPLES_DRONECAN_NODE_MEM_POOL_SIZE
+ 	int "Node Memory Pool Size"
+ 	default 1024
+ 	---help---
+ 		Specifies the node's memory pool size
+ 
+-config EXAMPLES_LIBCANARDV0_DAEMON_PRIORITY
++config EXAMPLES_DRONECAN_DAEMON_PRIORITY
+ 	int "daemon task priority"
+ 	default 100
+ 
+-config EXAMPLES_LIBCANARDV0_STACKSIZE
++config EXAMPLES_DRONECAN_STACKSIZE
+ 	int "canard stack size"
+ 	default DEFAULT_TASK_STACKSIZE
+ 
+diff --git a/examples/canardv0/Make.defs b/examples/dronecan/Make.defs
+similarity index 88%
+rename from examples/canardv0/Make.defs
+rename to examples/dronecan/Make.defs
+index 84f5e3aad..afcaed2be 100644
+--- a/examples/canardv0/Make.defs
++++ b/examples/dronecan/Make.defs
+@@ -1,5 +1,5 @@
+ ############################################################################
+-# apps/examples/canardv0/Make.defs
++# apps/examples/dronecan/Make.defs
+ #
+ # Licensed to the Apache Software Foundation (ASF) under one or more
+ # contributor license agreements.  See the NOTICE file distributed with
+@@ -18,6 +18,6 @@
+ #
+ ############################################################################
+ 
+-ifneq ($(CONFIG_EXAMPLES_LIBCANARDV0),)
+-CONFIGURED_APPS += $(APPDIR)/examples/canardv0
++ifneq ($(CONFIG_EXAMPLES_DRONECAN),)
++CONFIGURED_APPS += $(APPDIR)/examples/dronecan
+ endif
+diff --git a/examples/canardv0/Makefile b/examples/dronecan/Makefile
+similarity index 88%
+rename from examples/canardv0/Makefile
+rename to examples/dronecan/Makefile
+index 00f5f21ae..eb4f617c2 100644
+--- a/examples/canardv0/Makefile
++++ b/examples/dronecan/Makefile
+@@ -1,5 +1,5 @@
+ ############################################################################
+-# apps/examples/canardv0/Makefile
++# apps/examples/dronecan/Makefile
+ #
+ # Licensed to the Apache Software Foundation (ASF) under one or more
+ # contributor license agreements.  See the NOTICE file distributed with
+@@ -20,10 +20,10 @@
+ 
+ include $(APPDIR)/Make.defs
+ 
+-PROGNAME = canardv0
++PROGNAME = dronecan
+ PRIORITY = SCHED_PRIORITY_DEFAULT
+-STACKSIZE = $(CONFIG_EXAMPLES_LIBCANARDV0_STACKSIZE)
+-MODULE = $(CONFIG_EXAMPLES_LIBCANARDV0)
++STACKSIZE = $(CONFIG_EXAMPLES_DRONECAN_STACKSIZE)
++MODULE = $(CONFIG_EXAMPLES_DRONECAN)
+ 
+ CFLAGS += ${shell $(INCDIR) "$(CC)" $(APPDIR)/include/canutils}
+ MAINSRC = canard_main.c
+diff --git a/examples/canardv0/canard_main.c b/examples/dronecan/canard_main.c
+similarity index 84%
+rename from examples/canardv0/canard_main.c
+rename to examples/dronecan/canard_main.c
+index e0b645cca..d970ea918 100644
+--- a/examples/canardv0/canard_main.c
++++ b/examples/dronecan/canard_main.c
+@@ -1,5 +1,5 @@
+ /****************************************************************************
+- * apps/examples/canardv0/canard_main.c
++ * apps/examples/dronecan/canard_main.c
+  *
+  *   Copyright (C) 2016 ETH Zuerich. All rights reserved.
+  *   Author: Matthias Renner <rennerm@ethz.ch>
+@@ -38,9 +38,20 @@
+  ****************************************************************************/
+ 
+ #include <nuttx/can/can.h>
++
++
++#ifdef CONFIG_NET_CAN_CANFD
++#  define CANARD_ENABLE_CANFD 1
++#endif
++
+ #include <canard.h>
++#ifdef CONFIG_NET_CAN
++#include <socketcan.h>          /* CAN backend driver for nuttx socketcan, distributed
++                                 * with Libcanard */
++#else
+ #include <canard_nuttx.h>       /* CAN backend driver for nuttx, distributed
+                                  * with Libcanard */
++#endif
+ 
+ #include <sys/ioctl.h>
+ #include <sched.h>
+@@ -60,7 +71,7 @@
+ 
+ #define APP_VERSION_MAJOR                        1
+ #define APP_VERSION_MINOR                        0
+-#define APP_NODE_NAME                            CONFIG_EXAMPLES_LIBCANARDV0_APP_NODE_NAME
++#define APP_NODE_NAME                            CONFIG_EXAMPLES_DRONECAN_APP_NODE_NAME
+ #define GIT_HASH                                 0xb28bf6ac
+ 
+ /* Some useful constants defined by the UAVCAN specification.
+@@ -100,7 +111,7 @@ static CanardInstance canard;
+ /* Arena for memory allocation, used by the library */
+ 
+ static uint8_t canard_memory_pool
+-               [CONFIG_EXAMPLES_LIBCANARDV0_NODE_MEM_POOL_SIZE];
++               [CONFIG_EXAMPLES_DRONECAN_NODE_MEM_POOL_SIZE];
+ 
+ static uint8_t unique_id[UNIQUE_ID_LENGTH_BYTES] =
+ { 0x00, 0x00, 0x00, 0x00,
+@@ -115,6 +126,10 @@ static uint8_t node_health = UAVCAN_NODE_HEALTH_OK;
+ static uint8_t node_mode = UAVCAN_NODE_MODE_INITIALIZATION;
+ static bool g_canard_daemon_started;
+ 
++#if CANARD_ENABLE_CANFD
++static bool canfd = false;
++#endif
++
+ /****************************************************************************
+  * Public Functions
+  ****************************************************************************/
+@@ -227,6 +242,17 @@ static void onTransferReceived(CanardInstance *ins,
+        */
+ 
+       const int resp_res =
++#if CANARD_ENABLE_CANFD
++        canardRequestOrRespond(ins,
++                               transfer->source_node_id,
++                               UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
++                               UAVCAN_GET_NODE_INFO_DATA_TYPE_ID,
++                               &transfer->transfer_id,
++                               transfer->priority,
++                               CanardResponse,
++                               &buffer[0],
++                               (uint16_t) total_size, canfd);
++#else
+         canardRequestOrRespond(ins,
+                                transfer->source_node_id,
+                                UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
+@@ -236,6 +262,7 @@ static void onTransferReceived(CanardInstance *ins,
+                                CanardResponse,
+                                &buffer[0],
+                                (uint16_t) total_size);
++#endif
+       if (resp_res <= 0)
+         {
+           fprintf(stderr, "Could not respond to GetNodeInfo; error %d\n",
+@@ -333,10 +360,17 @@ void process1HzTasks(uint64_t timestamp_usec)
+       static uint8_t transfer_id;
+ 
+       const int bc_res =
++#if CANARD_ENABLE_CANFD
++        canardBroadcast(&canard, UAVCAN_NODE_STATUS_DATA_TYPE_SIGNATURE,
++                        UAVCAN_NODE_STATUS_DATA_TYPE_ID, &transfer_id,
++                        CANARD_TRANSFER_PRIORITY_LOW,
++                        buffer, UAVCAN_NODE_STATUS_MESSAGE_SIZE, canfd);
++#else
+         canardBroadcast(&canard, UAVCAN_NODE_STATUS_DATA_TYPE_SIGNATURE,
+                         UAVCAN_NODE_STATUS_DATA_TYPE_ID, &transfer_id,
+                         CANARD_TRANSFER_PRIORITY_LOW,
+                         buffer, UAVCAN_NODE_STATUS_MESSAGE_SIZE);
++#endif
+       if (bc_res <= 0)
+         {
+           fprintf(stderr, "Could not broadcast node status; error %d\n",
+@@ -349,12 +383,21 @@ void process1HzTasks(uint64_t timestamp_usec)
+       uint8_t payload[1];
+       uint8_t dest_id = 2;
+       const int resp_res =
++#if CANARD_ENABLE_CANFD
++        canardRequestOrRespond(&canard, dest_id,
++                               UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
++                               UAVCAN_GET_NODE_INFO_DATA_TYPE_ID,
++                               &transfer_id,
++                               CANARD_TRANSFER_PRIORITY_LOW, CanardRequest,
++                               payload, 0, canfd);
++#else
+         canardRequestOrRespond(&canard, dest_id,
+                                UAVCAN_GET_NODE_INFO_DATA_TYPE_SIGNATURE,
+                                UAVCAN_GET_NODE_INFO_DATA_TYPE_ID,
+                                &transfer_id,
+                                CANARD_TRANSFER_PRIORITY_LOW, CanardRequest,
+                                payload, 0);
++#endif
+       if (resp_res <= 0)
+         {
+           fprintf(stderr, "Could not request GetNodeInfo; error %d\n",
+@@ -372,8 +415,11 @@ void process1HzTasks(uint64_t timestamp_usec)
+  *   Transmits all frames from the TX queue, receives up to one frame.
+  *
+  ****************************************************************************/
+-
++#ifdef CONFIG_NET_CAN
++void processTxRxOnce(SocketCANInstance  * socketcan, int timeout_msec)
++#else
+ void processTxRxOnce(CanardNuttXInstance * nuttxcan, int timeout_msec)
++#endif
+ {
+   const CanardCANFrame *txf;
+ 
+@@ -381,8 +427,12 @@ void processTxRxOnce(CanardNuttXInstance * nuttxcan, int timeout_msec)
+ 
+   for (txf = NULL; (txf = canardPeekTxQueue(&canard)) != NULL; )
+     {
++#ifdef CONFIG_NET_CAN
++      const int tx_res = socketcanTransmit(socketcan, txf, 0);
++#else
+       const int tx_res = canardNuttXTransmit(nuttxcan, txf, 0);
+-      if (tx_res < 0)           /* Failure - drop the frame and report */
++#endif
++      if (tx_res < 0 && tx_res != -EAGAIN)           /* Failure - drop the frame and report */
+         {
+           canardPopTxQueue(&canard);
+           fprintf(stderr,
+@@ -403,7 +453,11 @@ void processTxRxOnce(CanardNuttXInstance * nuttxcan, int timeout_msec)
+ 
+   CanardCANFrame rx_frame;
+   const uint64_t timestamp = getMonotonicTimestampUSec();
++#ifdef CONFIG_NET_CAN
++  const int rx_res = socketcanReceive(socketcan, &rx_frame, timeout_msec);
++#else
+   const int rx_res = canardNuttXReceive(nuttxcan, &rx_frame, timeout_msec);
++#endif
+ 
+   if (rx_res < 0)               /* Failure - report */
+     {
+@@ -429,7 +483,11 @@ void processTxRxOnce(CanardNuttXInstance * nuttxcan, int timeout_msec)
+ 
+ static int canard_daemon(int argc, char *argv[])
+ {
++#ifdef CONFIG_NET_CAN
++  static SocketCANInstance socketcan;
++#else
+   static CanardNuttXInstance canardnuttx_instance;
++#endif
+ #ifdef CONFIG_DEBUG_CAN
+   struct canioc_bittiming_s bt;
+ #endif
+@@ -442,17 +500,33 @@ static int canard_daemon(int argc, char *argv[])
+ 
+   /* Open the CAN device for reading */
+ 
++  
++#ifdef CONFIG_NET_CAN
++  const char *const can_iface_name = "can0";
++
++#  if CANARD_ENABLE_CANFD
++  int16_t res = socketcanInit(&socketcan, can_iface_name, canfd);
++#  else
++  int16_t res = socketcanInit(&socketcan, can_iface_name);
++#  endif
++  if (res < 0)
++    {
++      (void)fprintf(stderr, "Failed to open CAN iface '%s'\n", can_iface_name);
++      return 1;
++    }
++#else
+   ret = canardNuttXInit(&canardnuttx_instance,
+-                        CONFIG_EXAMPLES_LIBCANARDV0_DEVPATH);
++                        CONFIG_EXAMPLES_DRONECAN_DEVPATH);
+   if (ret < 0)
+     {
+       printf("canard_daemon: ERROR: open %s failed: %d\n",
+-             CONFIG_EXAMPLES_LIBCANARDV0_DEVPATH, errno);
++             CONFIG_EXAMPLES_DRONECAN_DEVPATH, errno);
+       errval = 2;
+       goto errout_with_dev;
+     }
++#endif
+ 
+-#ifdef CONFIG_DEBUG_CAN
++#if defined(CONFIG_CAN) && defined(CONFIG_DEBUG_CAN)
+   /* Show bit timing information if provided by the driver.  Not all CAN
+    * drivers will support this IOCTL.
+    */
+@@ -476,10 +550,10 @@ static int canard_daemon(int argc, char *argv[])
+ 
+   canardInit(&canard, canard_memory_pool, sizeof(canard_memory_pool),
+              onTransferReceived, shouldAcceptTransfer, (void *)(12345));
+-  canardSetLocalNodeID(&canard, CONFIG_EXAMPLES_LIBCANARDV0_NODE_ID);
++  canardSetLocalNodeID(&canard, CONFIG_EXAMPLES_DRONECAN_NODE_ID);
+   printf("canard_daemon: canard initialized\n");
+   printf("start node (ID: %d Name: %s)\n",
+-         CONFIG_EXAMPLES_LIBCANARDV0_NODE_ID,
++         CONFIG_EXAMPLES_DRONECAN_NODE_ID,
+          APP_NODE_NAME);
+ 
+   g_canard_daemon_started = true;
+@@ -487,7 +561,11 @@ static int canard_daemon(int argc, char *argv[])
+ 
+   for (; ; )
+     {
++#ifdef CONFIG_NET_CAN
++      processTxRxOnce(&socketcan, 10);
++#else
+       processTxRxOnce(&canardnuttx_instance, 10);
++#endif
+ 
+       const uint64_t ts = getMonotonicTimestampUSec();
+ 
+@@ -499,7 +577,9 @@ static int canard_daemon(int argc, char *argv[])
+     }
+ 
+ errout_with_dev:
++#ifdef CONFIG_CAN
+   canardNuttXClose(&canardnuttx_instance);
++#endif
+ 
+   g_canard_daemon_started = false;
+   printf("canard_daemon: Terminating!\n");
+@@ -525,9 +605,14 @@ int main(int argc, FAR char *argv[])
+       return EXIT_SUCCESS;
+     }
+ 
++  if (argc == 2 && strcmp(argv[1],"canfd") == 0) {
++      printf("CAN FD mode enabled\n");
++      canfd = true;
++  }
++
+   ret = task_create("canard_daemon",
+-                    CONFIG_EXAMPLES_LIBCANARDV0_DAEMON_PRIORITY,
+-                    CONFIG_EXAMPLES_LIBCANARDV0_STACKSIZE, canard_daemon,
++                    CONFIG_EXAMPLES_DRONECAN_DAEMON_PRIORITY,
++                    CONFIG_EXAMPLES_DRONECAN_STACKSIZE, canard_daemon,
+                     NULL);
+   if (ret < 0)
+     {
+diff --git a/include/canutils/.gitignore b/include/canutils/.gitignore
+index cd3875f43..6687c5f1b 100644
+--- a/include/canutils/.gitignore
++++ b/include/canutils/.gitignore
+@@ -2,3 +2,5 @@
+ /canard_nuttx.h
+ /canard_dsdl.h
+ /o1heap.h
++/socketcan.h
++/dronecan
+diff --git a/nxp_bms/Make.defs b/nxp_bms/Make.defs
+new file mode 100644
+index 000000000..24f85f56b
+--- /dev/null
++++ b/nxp_bms/Make.defs
+@@ -0,0 +1,35 @@
++############################################################################
++# apps/nxp_bms/Make.defs
++#
++# BSD 3-Clause License
++# 
++# Copyright 2020 NXP
++# 
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions are met:
++# 
++# 1. Redistributions of source code must retain the above copyright notice, this
++#    list of conditions and the following disclaimer.
++# 
++# 2. Redistributions in binary form must reproduce the above copyright notice,
++#    this list of conditions and the following disclaimer in the documentation
++#    and/or other materials provided with the distribution.
++# 
++# 3. Neither the name of the copyright holder nor the names of its
++#    contributors may be used to endorse or promote products derived from
++#    this software without specific prior written permission.
++# 
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++############################################################################
++
++include $(wildcard nxp_bms/*/Make.defs)
+diff --git a/nxp_bms/Makefile b/nxp_bms/Makefile
+new file mode 100644
+index 000000000..c84758792
+--- /dev/null
++++ b/nxp_bms/Makefile
+@@ -0,0 +1,75 @@
++############################################################################
++# apps/nxp_bms/Makefile
++#
++# BSD 3-Clause License
++# 
++# Copyright 2020 NXP
++# 
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions are met:
++# 
++# 1. Redistributions of source code must retain the above copyright notice, this
++#    list of conditions and the following disclaimer.
++# 
++# 2. Redistributions in binary form must reproduce the above copyright notice,
++#    this list of conditions and the following disclaimer in the documentation
++#    and/or other materials provided with the distribution.
++# 
++# 3. Neither the name of the copyright holder nor the names of its
++#    contributors may be used to endorse or promote products derived from
++#    this software without specific prior written permission.
++# 
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
++# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
++# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
++# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
++# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
++# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++############################################################################
++
++MENUDESC = "nxp_bms"
++
++include $(APPDIR)/Make.defs
++
++# Sub-directories
++
++SUBDIRS       := $(dir $(wildcard *$(DELIM)Makefile))
++CONFIGSUBDIRS := $(filter-out $(dir $(wildcard *$(DELIM)Kconfig)),$(SUBDIRS))
++CLEANSUBDIRS  := $(dir $(wildcard *$(DELIM).built))
++CLEANSUBDIRS  += $(dir $(wildcard *$(DELIM).depend))
++CLEANSUBDIRS  += $(dir $(wildcard *$(DELIM).kconfig))
++
++all: nothing
++
++.PHONY: nothing clean distclean
++
++$(foreach SDIR, $(CONFIGSUBDIRS), $(eval $(call SDIR_template,$(SDIR),preconfig)))
++$(foreach SDIR, $(CLEANSUBDIRS), $(eval $(call SDIR_template,$(SDIR),clean)))
++$(foreach SDIR, $(CLEANSUBDIRS), $(eval $(call SDIR_template,$(SDIR),distclean)))
++
++nothing:
++
++install:
++
++preconfig: $(foreach SDIR, $(CONFIGSUBDIRS), $(SDIR)_preconfig)
++ifneq ($(MENUDESC),)
++	$(Q) $(MKKCONFIG) -m $(MENUDESC)
++	$(Q) touch .kconfig
++endif
++
++clean: $(foreach SDIR, $(CLEANSUBDIRS), $(SDIR)_clean)
++	find . -name "*.o" | xargs rm -rf
++
++distclean: $(foreach SDIR, $(CLEANSUBDIRS), $(SDIR)_distclean)
++	find . -name "*.o" | xargs rm -rf
++ifneq ($(MENUDESC),)
++	$(call DELFILE, Kconfig)
++	$(call DELFILE, .kconfig)
++endif
++
++-include Make.dep
+-- 
+2.25.1
+
